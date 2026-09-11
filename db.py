@@ -61,11 +61,22 @@ def list_conversations(limit: int = 10) -> list[dict]:
     try:
         rows = conn.execute(
             """
-            SELECT c.id, c.created_at, COUNT(m.id) AS message_count
+            SELECT
+                c.id,
+                c.created_at,
+                COUNT(m.id) AS message_count,
+                (
+                    SELECT first_msg.content
+                    FROM messages first_msg
+                    WHERE first_msg.conversation_id = c.id
+                      AND first_msg.role = 'user'
+                    ORDER BY first_msg.id
+                    LIMIT 1
+                ) AS preview
             FROM conversations c
             LEFT JOIN messages m ON m.conversation_id = c.id
             GROUP BY c.id
-            ORDER BY c.created_at DESC
+            ORDER BY c.id DESC
             LIMIT ?
             """,
             (limit,),
