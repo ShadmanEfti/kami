@@ -1,10 +1,16 @@
 import requests
-
 import db
 from datetime import datetime
+from memory import add_memory, list_memories, deactivate_memory
 
 OLLAMA_URL = "http://localhost:11434/api/chat"
 MODEL = "llama3.2:3b"
+
+HELP_TEXT="""Commands:
+  /remember <text> Store a memory
+  /memories List stored memories
+  /forget <id> Forget a memory
+  /help Show this message"""
 
 
 def print_conversation_menu(conversations):
@@ -21,6 +27,43 @@ def print_conversation_menu(conversations):
         print(f"{i}. {when} — {count} {label} — \"{preview}\"")
 
 
+def handle_command(user_input,conversation_id):
+
+    parts=user_input.split(maxsplit=1)
+    command=parts[0].lower()
+    argument=parts[1] if len(parts)>1 else ""
+
+    if command=="/remember":
+        try:
+            memory_id=add_memory(argument)
+            print(f"Remembered (#{memory_id})\n")
+        except ValueError as e:
+            print(f"Error: {e}\n")
+
+    elif command=="/memories":
+        memories=list_memories()
+        if not memories:
+            print("No memories stored yet.\n")
+        else:
+            for m in memories:
+                print(f" [{m['id']}] {m['content']}")
+            print("")
+
+    elif command=="/forget":
+        if not argument.isdigit():
+            print("Usage: /forget <id>\n")
+        elif deactivate_memory(int((argument))):
+           print(f"Forgot memory #{argument}\n")
+        else:
+            print(f"No active memory with id {argument}\n")
+
+    elif command=="/help":
+        print(HELP_TEXT+"\n")
+
+    else:
+        print(f"Unknown command: {command}. Try /help\n")
+
+        
 if __name__ == "__main__":
     db.init_db()
 
@@ -55,6 +98,10 @@ if __name__ == "__main__":
             break
 
         if not user_input:
+            continue
+
+        if user_input.startswith("/"):
+            handle_command(user_input,conversation_id)
             continue
 
         messages.append({"role": "user", "content": user_input})
