@@ -1,7 +1,7 @@
 import requests
 import db
 from datetime import datetime
-from memory import add_memory, list_memories, deactivate_memory
+from memory import add_memory,list_memories,deactivate_memory,get_active_memories
 
 OLLAMA_URL = "http://localhost:11434/api/chat"
 MODEL = "llama3.2:3b"
@@ -63,6 +63,14 @@ def handle_command(user_input,conversation_id):
     else:
         print(f"Unknown command: {command}. Try /help\n")
 
+
+def build_system_prompt(memories):
+
+    if not memories:
+        return None
+    lines="\n".join(f"- {m['content']}" for m in memories)
+    return f"You are a helpful assistant.\n\nKnown facts about the user:\n{lines}"
+
         
 if __name__ == "__main__":
     db.init_db()
@@ -107,9 +115,16 @@ if __name__ == "__main__":
         messages.append({"role": "user", "content": user_input})
         db.add_message(conversation_id, "user", user_input)
 
+        active=get_active_memories(conversation_id)
+        system_prompt=build_system_prompt(active)
+        if system_prompt is None:
+            payload_messages=messages
+        else:
+            payload_messages=[{"role":"system","content":system_prompt}]+messages
+
         response = requests.post(
             OLLAMA_URL,
-            json={"model": MODEL, "messages": messages, "stream": False}
+            json={"model": MODEL, "messages": payload_messages, "stream": False}
         )
         data = response.json()
         reply = data["message"]["content"]
