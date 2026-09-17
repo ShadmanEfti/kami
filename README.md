@@ -39,7 +39,7 @@ Requires Python 3.9+ and [Ollama](https://ollama.com).
 ollama pull llama3.2:3b
 git clone https://github.com/ShadmanEfti/kami.git
 cd kami
-pip install requests
+pip install -r requirements.txt
 python3 chat.py
 ```
 
