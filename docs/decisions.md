@@ -104,3 +104,43 @@ The SQL overlaps today, but they answer different questions and will
 diverge. Keeping the distinction visible in the function names is
 deliberate: the gap between what the user sees and what the model sees
 is the thing KAMI exists to expose.
+
+## 2026-09-22 — Extracted memories are proposed, never saved
+
+Automatic extraction produces candidates, not memories. Nothing
+reaches the `memories` table until the user accepts it with
+`/accept`. A rejected candidate never enters the model's context.
+
+An extractor that writes straight to memory is the silent,
+self-deciding behaviour KAMI exists to expose. The model decides what
+might be worth remembering; the user decides what is remembered. A 3B
+model will propose trivial or invented facts, and approval turns those
+misfires from silent prompt pollution into something the user sees and
+declines.
+
+Cost accepted: every memory now costs the user a decision. That
+friction is the point at this stage.
+
+Revisit when: measured extractor precision is high enough to justify
+auto-saving low-risk categories — a question for the evaluation
+harness, not intuition.
+
+## 2026-09-22 — Extraction runs on demand, not after every reply
+
+`/extract` runs the extractor over the current conversation when the
+user asks. Nothing runs automatically after a turn.
+
+Each extraction is a second full model call. On the development
+machine (8GB M1, `llama3.2:3b`), running it every turn would add a
+second wait to every reply, for a pass that finds nothing in most
+messages. On-demand also keeps the user in control of _when_ memory is
+built, not only _what_ goes into it.
+
+Like the other slash commands, `/extract` is control-plane: the
+extraction prompt and its output never enter `messages` or the
+`messages` table.
+
+Revisit when: extraction is cheap enough to run in the background.
+The extractor is a plain function with no trigger logic inside it, so
+an automatic trigger is a later call to the same function, not a
+redesign.
