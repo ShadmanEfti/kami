@@ -41,7 +41,7 @@ def handle_command(user_input,conversation_id):
             print(f"Error: {e}\n")
 
     elif command=="/memories":
-        memories=list_memories()
+        memories=list_memories(conversation_id)
         if not memories:
             print("No memories stored yet.\n")
         else:
