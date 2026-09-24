@@ -144,3 +144,57 @@ Revisit when: extraction is cheap enough to run in the background.
 The extractor is a plain function with no trigger logic inside it, so
 an automatic trigger is a later call to the same function, not a
 redesign.
+
+## 2026-09-25 — Candidates live in their own table
+
+Proposals go into `memory_candidates`; `memories` only ever holds what
+the user accepted.
+
+Rejected alternative: a `status` column on `memories`. Every read path
+(`get_active_memories()`, `list_memories()`) would then have to
+remember to filter out unapproved rows, and one missed `WHERE` clause
+would leak unapproved text into the prompt. A separate table makes
+that leak structurally impossible. It also needed no migration:
+adding a table is a `CREATE TABLE IF NOT EXISTS`, while altering
+`memories` would have forced another rebuild.
+
+Rejected candidates are kept, not deleted. Accepted ÷ proposed is the
+extractor's precision — the first real metric for the evaluation
+harness.
+
+Integrity lives in the schema, not only in the code: `status` is
+limited to `pending`/`accepted`/`rejected`, an accepted candidate must
+point at a memory (`(status='accepted') = (memory_id IS NOT NULL)`),
+and only decided candidates carry a decision time
+(`(status='pending') = (decided_at IS NULL)`). `accept_candidate()`
+inserts the memory and updates the candidate on one connection with
+one commit, so neither can happen without the other.
+
+Verified: a blank content, an unknown status, an `accepted` row with
+no memory and a nonexistent conversation id were each rejected by the
+matching constraint.
+
+## 2026-09-25 — Memory scope is chosen at accept time
+
+`/accept <id>` saves a memory globally; `/accept <id> here` saves it
+to the current conversation only. `/remember [here] <text>` scopes
+manual memories the same way.
+
+In `memories`, `conversation_id` means scope, not provenance: NULL is
+injected into every conversation, an id only into that one. Where an
+extracted memory came from is recorded in `memory_candidates`, which
+points at the memory it became.
+
+Global is the default because most extracted facts are about the user
+(name, projects, preferences) and hold everywhere; scoping to one
+conversation is the exception you opt into.
+
+Candidates follow the same visibility rule as memories: `/pending`,
+`/accept` and `/reject` only see candidates tied to no conversation
+plus the current conversation's. Without it, accepting a candidate by
+id from another conversation would make `here` mean the conversation
+it was extracted in rather than the one the user is in.
+
+`here` leads for `/remember` (free text follows) and trails for
+`/accept` (an id comes first), so neither can be confused with memory
+content.
