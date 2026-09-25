@@ -2,9 +2,8 @@ import requests
 import db
 from datetime import datetime
 from memory import add_memory,list_memories,deactivate_memory,get_active_memories
+from config import OLLAMA_URL,MODEL
 
-OLLAMA_URL = "http://localhost:11434/api/chat"
-MODEL = "llama3.2:3b"
 
 HELP_TEXT="""Commands:
   /remember <text> Store a memory
