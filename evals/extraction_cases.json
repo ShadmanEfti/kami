@@ -1,0 +1,21 @@
+[
+  {
+    "name": "facts",
+    "user_messages": [
+      "Hi, I'm Acam, I study data science at UIU",
+      "I'm building a memory layer for LLMs called KAMI",
+      "I prefer answers with code examples"
+    ],
+    "expect": "some"
+  },
+  {
+    "name": "no_facts",
+    "user_messages": ["what's 2+2?", "thanks!"],
+    "expect": "none"
+  },
+  {
+    "name": "transient",
+    "user_messages": ["I'm so tired today", "can you help me fix this error?"],
+    "expect": "none"
+  }
+]
