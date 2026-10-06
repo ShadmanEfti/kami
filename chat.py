@@ -1,7 +1,11 @@
 import requests
 import db
 from datetime import datetime
-from memory import add_memory,list_memories,deactivate_memory,get_active_memories
+from memory import (
+    add_memory,list_memories,deactivate_memory,get_active_memories,
+    add_candidate,list_pending,accept_candidate,reject_candidate,
+)
+from extractor import extract_candidates,ExtractionError
 from config import OLLAMA_URL,MODEL
 
 
@@ -13,6 +17,7 @@ HELP_TEXT="""Commands:
 
 
 def print_conversation_menu(conversations):
+
     for i, c in enumerate(conversations, start=1):
         ts = datetime.strptime(c["created_at"], "%Y-%m-%d %H:%M:%S")
         when = ts.strftime("%b %-d, %-I:%M %p")
@@ -25,6 +30,12 @@ def print_conversation_menu(conversations):
             preview = preview[:40] + "..."
         print(f"{i}. {when} — {count} {label} — \"{preview}\"")
 
+def split_scope(text):
+
+    parts=text.split(maxsplit=1)
+    if len(parts)==2 and parts[0].lower()=="here":
+        return "conversation",parts[1]
+    return "global",text
 
 def handle_command(user_input,conversation_id):
 
@@ -33,11 +44,17 @@ def handle_command(user_input,conversation_id):
     argument=parts[1] if len(parts)>1 else ""
 
     if command=="/remember":
-        try:
-            memory_id=add_memory(argument)
-            print(f"Remembered (#{memory_id})\n")
-        except ValueError as e:
-            print(f"Error: {e}\n")
+        if argument.strip().lower()=="here":
+            print("Usage: /remember [here] <text>\n")
+        else:
+            scope,content=split_scope(argument)
+            target=conversation_id if scope=="conversation" else None
+            try:
+                memory_id=add_memory(content,conversation_id=target)
+                label="this conversation only" if target else "global"
+                print(f"Remembered #{memory_id} ({label})\n")
+            except ValueError as e:
+                print(f"Error: {e}\n")
 
     elif command=="/memories":
         memories=list_memories(conversation_id)
