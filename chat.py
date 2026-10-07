@@ -8,13 +8,15 @@ from memory import (
 from extractor import extract_candidates,ExtractionError
 from config import OLLAMA_URL,MODEL
 
-
 HELP_TEXT="""Commands:
-  /remember <text> Store a memory
-  /memories List stored memories
-  /forget <id> Forget a memory
-  /help Show this message"""
-
+  /remember [here] <text>  Store a memory (here = this conversation only)
+  /memories                List memories visible here
+  /forget <id>             Forget a memory
+  /extract                 Suggest memories from this conversation
+  /pending                 List suggestions waiting for a decision
+  /accept <id> [here]      Save a suggestion (here = this conversation only)
+  /reject <id>             Discard a suggestion
+  /help                    Show this message"""
 
 def print_conversation_menu(conversations):
 
@@ -62,7 +64,8 @@ def handle_command(user_input,conversation_id):
             print("No memories stored yet.\n")
         else:
             for m in memories:
-                print(f" [{m['id']}] {m['content']}")
+                where="global" if m["conversation_id"] is None else "this conversation"
+                print(f" [{m['id']}] ({m['source']} · {where}) {m['content']}")
             print("")
 
     elif command=="/forget":
