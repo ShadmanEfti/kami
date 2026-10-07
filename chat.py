@@ -100,6 +100,47 @@ def handle_command(user_input,conversation_id):
             print(f" [{candidate_id}] {text}")
         print("/accept <id> [here] · /reject <id>\n")
 
+    elif command=="/pending":
+        pending=list_pending(conversation_id)
+        if not pending:
+            print("No pending suggestions.\n")
+        else:
+            for c in pending:
+                where="global" if c["conversation_id"] is None else "this conversation"
+                print(f" [{c['id']}] ({where}) {c['content']}")
+            print("/accept <id> [here] · /reject <id>\n")
+
+    elif command=="/accept":
+        words=argument.split()
+        if len(words)==1 and words[0].isdigit():
+            scope="global"
+        elif len(words)==2 and words[0].isdigit() and words[1].lower()=="here":
+            scope="conversation"
+        else:
+            print("Usage: /accept <id> [here]\n")
+            return
+
+        candidate_id=int(words[0])
+        try:
+            accepted=accept_candidate(candidate_id,conversation_id,scope)
+        except ValueError as e:
+            print(f"Error: {e}\n")
+            return
+
+        if accepted:
+            label="this conversation only" if scope=="conversation" else "global"
+            print(f"Accepted #{candidate_id} ({label})\n")
+        else:
+            print(f"No pending suggestion #{candidate_id} here\n")
+
+    elif command=="/reject":
+        if not argument.isdigit():
+            print("Usage: /reject <id>\n")
+        elif reject_candidate(int(argument),conversation_id):
+            print(f"Rejected #{argument}\n")
+        else:
+            print(f"No pending suggestion #{argument} here\n")
+
     elif command=="/help":
         print(HELP_TEXT+"\n")
 
