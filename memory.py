@@ -186,3 +186,18 @@ def reject_candidate(candidate_id,conversation_id=None):
         return cursor.rowcount>0
     finally:
         conn.close()
+
+def list_rejected():
+
+    conn=get_connection()
+    try:
+        rows=conn.execute(
+            """
+            SELECT content FROM memory_candidates
+            WHERE status='rejected'
+            """
+        ).fetchall()
+        return [row["content"] for row in rows]
+    finally:
+        conn.close()
+        

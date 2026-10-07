@@ -3,7 +3,7 @@ import db
 from datetime import datetime
 from memory import (
     add_memory,list_memories,deactivate_memory,get_active_memories,
-    add_candidate,list_pending,accept_candidate,reject_candidate,
+    add_candidate,list_pending,accept_candidate,reject_candidate,list_rejected
 )
 from extractor import extract_candidates,ExtractionError
 from config import OLLAMA_URL,MODEL
@@ -72,6 +72,33 @@ def handle_command(user_input,conversation_id):
            print(f"Forgot memory #{argument}\n")
         else:
             print(f"No active memory with id {argument}\n")
+
+    elif command=="/extract":
+        history=db.get_messages(conversation_id)
+        user_messages=[m["content"] for m in history if m["role"]=="user"]
+        if not user_messages:
+            print("Nothing to extract yet. Say something first.\n")
+            return
+
+        existing=[m["content"] for m in get_active_memories(conversation_id)]
+        existing+=[c["content"] for c in list_pending(conversation_id)]
+
+        print("Extracting...",flush=True)
+        try:
+            found=extract_candidates(user_messages,existing,list_rejected())
+        except ExtractionError as e:
+            print(f"Extraction failed: {e}\n")
+            return
+
+        if not found:
+            print("No new memories suggested.\n")
+            return
+
+        print("Suggested memories:")
+        for text in found:
+            candidate_id=add_candidate(text,conversation_id)
+            print(f" [{candidate_id}] {text}")
+        print("/accept <id> [here] · /reject <id>\n")
 
     elif command=="/help":
         print(HELP_TEXT+"\n")

@@ -23,7 +23,7 @@ Rules:
 - Only extract what the user explicitly said. Never infer or guess.
 - Write each memory as one short sentence starting with "User", e.g. "User's name is Sultana." or "User prefers Python over R."
 - Skip temporary states (moods, today's plans), questions, requests for help, and small talk.
-- Skip anything already listed under Existing memories.
+- Extract only from the Transcript. Existing memories are listed so you can skip them; never repeat, reword, or translate them.
 - If nothing is worth remembering, return an empty list.
  
 Respond only with JSON: {"memories": [...]}"""
@@ -37,7 +37,7 @@ def build_user_message(user_messages,existing):
     transcript="\n".join(f"User: {m}" for m in user_messages[-TRANSCRIPT_WINDOW:])
     return f"Existing memories:\n{existing_block}\n\nTranscript:\n{transcript}"
 
-def extract_candidates(user_messages,existing):
+def extract_candidates(user_messages,existing,blocked=()):
 
     if not user_messages:
         return []
@@ -74,7 +74,7 @@ def extract_candidates(user_messages,existing):
     if not isinstance(parsed,dict) or not isinstance(parsed.get("memories",[]),list):
         raise ExtractionError("Model returned JSON in the wrong shape")
 
-    seen={normalize(m) for m in existing}
+    seen={normalize(m) for m in existing}|{normalize(b) for b in blocked}
     candidates=[]
 
     for item in parsed.get("memories",[]):
