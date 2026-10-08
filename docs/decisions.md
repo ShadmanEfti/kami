@@ -198,3 +198,103 @@ it was extracted in rather than the one the user is in.
 `here` leads for `/remember` (free text follows) and trails for
 `/accept` (an id comes first), so neither can be confused with memory
 content.
+
+## 2026-10-07 — Extraction prompt kept after the fixture run
+
+The extraction prompt passed all three fixtures unchanged: the
+fact-rich case returned one memory per stated fact, and the no-facts
+and transient cases both returned an empty list. Duplicate filtering
+against existing memories worked, and an unreachable Ollama raised
+`ExtractionError` rather than returning an empty result.
+
+The fixtures are easy cases and all ran with no existing memories,
+which later proved to hide most of the real failures (see the next
+entry). Deferred to the evaluation harness: several facts in one
+sentence, a fact mixed with a mood, facts about other people, changes
+of mind, hypotheticals, and every case run again with existing
+memories present.
+
+## 2026-10-07 — Copied memories are caught by review, not by the prompt
+
+With memories present, `llama3.2:3b` repeatedly copied entries from
+the `Existing memories` section into its suggestions, sometimes word
+for word, sometimes reworded or translated. It did so with an explicit
+rule against it in the prompt; the rule was confirmed present in the
+file the chat loaded.
+
+Two other failure modes appeared in testing: inventing comparisons
+between a stated fact and an existing memory ("User prefers X over AI
+engineering"), and missing one of two facts stated in a single
+sentence.
+
+Rejected for now: a grounding check that drops suggestions whose
+content words do not appear in the user's messages. It targets the
+observed failure, but every leak is already caught by approval, and a
+stronger model plus embedding-based comparison (RAG milestone) may
+make it unnecessary.
+
+The lesson stands regardless of the fix: a rule in the prompt is not a
+control. A 3B model will ignore it, so anything that must hold is
+enforced in code or by the user.
+
+Revisit when: switching to a stronger model, or when the RAG layer
+provides embeddings.
+
+## 2026-10-07 — Duplicate detection has two layers
+
+Suggestions are checked twice. The model is told to skip anything
+already listed, which catches reworded repeats when it complies.
+`normalize()` then drops anything matching an existing memory, a
+pending suggestion or a rejected suggestion after case-folding,
+trimming and removing a trailing period, which catches exact repeats
+reliably.
+
+Rejected suggestions block repeats in every conversation, not only the
+one they were rejected in: a rejection is a judgement about the fact,
+and that judgement does not change between conversations. They are
+passed to the extractor separately and never shown to the model, since
+listing them as existing memories would present rejected facts as
+true.
+
+Known gap, seen in testing: a rejected suggestion can return in
+different words, which exact matching cannot catch. Closing it needs
+semantic comparison.
+
+## 2026-10-07 — "Found nothing" and "failed" are different results
+
+`extract_candidates()` returns an empty list when the model ran and
+found nothing worth keeping, and raises `ExtractionError` when the
+request, the response or the JSON failed. Collapsing the two would
+make `/extract` report "no suggestions" while Ollama was down.
+
+Connection failures and timeouts get short messages for the chat; the
+underlying exception is kept on `__cause__` for debugging.
+
+## 2026-10-08 — Accept/reject rate is not extraction precision
+
+`memory_candidates` records whether each suggestion was accepted, not
+why one was rejected. A suggestion rejected because the model copied
+or invented it, and one rejected because the user did not want a
+correct fact stored, look the same.
+
+Reported figures for Milestone 1 therefore come from reviewing each
+suggestion by hand: in the first test run, all three stated facts were
+captured, and all four rejections were model errors (three copied
+memories, one invented). This is a handful of hand-tested
+suggestions, not a benchmark.
+
+Deferred to the evaluation harness: record a reason on rejection
+(`copied`, `invented`, `not wanted`), so precision can be computed
+from the table.
+
+## 2026-10-08 — Demo recorded from a fresh database
+
+The Milestone 1 demo was recorded after moving the test database out
+of the repository and starting empty. Old test memories were changing
+the model's replies (a stray memory about Japanese made it greet the
+user in Japanese), and an empty start can be recreated exactly, which,
+with extraction at temperature 0, made rehearsal and recording produce
+the same suggestions.
+
+The previous database is kept outside the repository as the record of
+the testing behind the figures above.
