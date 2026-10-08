@@ -1,19 +1,25 @@
 import requests
 import db
 from datetime import datetime
-from memory import add_memory,list_memories,deactivate_memory,get_active_memories
-
-OLLAMA_URL = "http://localhost:11434/api/chat"
-MODEL = "llama3.2:3b"
+from memory import (
+    add_memory,list_memories,deactivate_memory,get_active_memories,
+    add_candidate,list_pending,accept_candidate,reject_candidate,list_rejected
+)
+from extractor import extract_candidates,ExtractionError
+from config import OLLAMA_URL,MODEL
 
 HELP_TEXT="""Commands:
-  /remember <text> Store a memory
-  /memories List stored memories
-  /forget <id> Forget a memory
-  /help Show this message"""
-
+  /remember [here] <text>  Store a memory (here = this conversation only)
+  /memories                List memories visible here
+  /forget <id>             Forget a memory
+  /extract                 Suggest memories from this conversation
+  /pending                 List suggestions waiting for a decision
+  /accept <id> [here]      Save a suggestion (here = this conversation only)
+  /reject <id>             Discard a suggestion
+  /help                    Show this message"""
 
 def print_conversation_menu(conversations):
+
     for i, c in enumerate(conversations, start=1):
         ts = datetime.strptime(c["created_at"], "%Y-%m-%d %H:%M:%S")
         when = ts.strftime("%b %-d, %-I:%M %p")
@@ -26,6 +32,12 @@ def print_conversation_menu(conversations):
             preview = preview[:40] + "..."
         print(f"{i}. {when} — {count} {label} — \"{preview}\"")
 
+def split_scope(text):
+
+    parts=text.split(maxsplit=1)
+    if len(parts)==2 and parts[0].lower()=="here":
+        return "conversation",parts[1]
+    return "global",text
 
 def handle_command(user_input,conversation_id):
 
@@ -34,19 +46,26 @@ def handle_command(user_input,conversation_id):
     argument=parts[1] if len(parts)>1 else ""
 
     if command=="/remember":
-        try:
-            memory_id=add_memory(argument)
-            print(f"Remembered (#{memory_id})\n")
-        except ValueError as e:
-            print(f"Error: {e}\n")
+        if argument.strip().lower()=="here":
+            print("Usage: /remember [here] <text>\n")
+        else:
+            scope,content=split_scope(argument)
+            target=conversation_id if scope=="conversation" else None
+            try:
+                memory_id=add_memory(content,conversation_id=target)
+                label="this conversation only" if target else "global"
+                print(f"Remembered #{memory_id} ({label})\n")
+            except ValueError as e:
+                print(f"Error: {e}\n")
 
     elif command=="/memories":
-        memories=list_memories()
+        memories=list_memories(conversation_id)
         if not memories:
             print("No memories stored yet.\n")
         else:
             for m in memories:
-                print(f" [{m['id']}] {m['content']}")
+                where="global" if m["conversation_id"] is None else "this conversation"
+                print(f" [{m['id']}] ({m['source']} · {where}) {m['content']}")
             print("")
 
     elif command=="/forget":
@@ -56,6 +75,74 @@ def handle_command(user_input,conversation_id):
            print(f"Forgot memory #{argument}\n")
         else:
             print(f"No active memory with id {argument}\n")
+
+    elif command=="/extract":
+        history=db.get_messages(conversation_id)
+        user_messages=[m["content"] for m in history if m["role"]=="user"]
+        if not user_messages:
+            print("Nothing to extract yet. Say something first.\n")
+            return
+
+        existing=[m["content"] for m in get_active_memories(conversation_id)]
+        existing+=[c["content"] for c in list_pending(conversation_id)]
+
+        print("Extracting...",flush=True)
+        try:
+            found=extract_candidates(user_messages,existing,list_rejected())
+        except ExtractionError as e:
+            print(f"Extraction failed: {e}\n")
+            return
+
+        if not found:
+            print("No new memories suggested.\n")
+            return
+
+        print("Suggested memories:")
+        for text in found:
+            candidate_id=add_candidate(text,conversation_id)
+            print(f" [{candidate_id}] {text}")
+        print("/accept <id> [here] · /reject <id>\n")
+
+    elif command=="/pending":
+        pending=list_pending(conversation_id)
+        if not pending:
+            print("No pending suggestions.\n")
+        else:
+            for c in pending:
+                where="global" if c["conversation_id"] is None else "this conversation"
+                print(f" [{c['id']}] ({where}) {c['content']}")
+            print("/accept <id> [here] · /reject <id>\n")
+
+    elif command=="/accept":
+        words=argument.split()
+        if len(words)==1 and words[0].isdigit():
+            scope="global"
+        elif len(words)==2 and words[0].isdigit() and words[1].lower()=="here":
+            scope="conversation"
+        else:
+            print("Usage: /accept <id> [here]\n")
+            return
+
+        candidate_id=int(words[0])
+        try:
+            accepted=accept_candidate(candidate_id,conversation_id,scope)
+        except ValueError as e:
+            print(f"Error: {e}\n")
+            return
+
+        if accepted:
+            label="this conversation only" if scope=="conversation" else "global"
+            print(f"Accepted #{candidate_id} ({label})\n")
+        else:
+            print(f"No pending suggestion #{candidate_id} here\n")
+
+    elif command=="/reject":
+        if not argument.isdigit():
+            print("Usage: /reject <id>\n")
+        elif reject_candidate(int(argument),conversation_id):
+            print(f"Rejected #{argument}\n")
+        else:
+            print(f"No pending suggestion #{argument} here\n")
 
     elif command=="/help":
         print(HELP_TEXT+"\n")
