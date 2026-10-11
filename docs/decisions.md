@@ -298,3 +298,46 @@ the same suggestions.
 
 The previous database is kept outside the repository as the record of
 the testing behind the figures above.
+
+## 2026-10-11 — Default model switched to qwen3.5:4b
+
+`llama3.2:3b` kept copying existing memories into its suggestions (see
+2026-10-07), so the default is now `qwen3.5:4b`. On the first
+extraction test it returned only stated facts, and picked up a
+correction the user made mid-conversation. One run, not a benchmark.
+
+Qwen3.5 has thinking on by default in Ollama. A "say hi" prompt
+produced over 4,000 reasoning tokens in four minutes and never
+answered. Every request now sends `"think": false` explicitly.
+
+The model is read from `KAMI_MODEL`, defaulting to `qwen3.5:4b`, so
+switching models is a config change, not a code change.
+
+Deferred: comparing `llama3.2:3b`, `qwen3.5:4b` and the OpenAI API
+until after Phases 4 and 5, so the comparison covers the whole system.
+
+## 2026-10-11 — Context window set to 8192
+
+Ollama defaults to a 4096-token window, and anything past it is
+dropped silently. Since memories and history share that window, a
+full context would look like a memory bug.
+
+Cost on the 8GB M1: the model grows from 3.1 GB fully on GPU to
+3.9 GB split 18/82 CPU/GPU, and generation drops from about 17.7 to
+about 16 tok/s. Slightly slower replies are acceptable; losing context
+without warning is not.
+
+Chat and extraction share the same `OLLAMA_OPTIONS` from `config.py`.
+Ollama reloads the model when `num_ctx` differs between requests,
+which would add a ~5s load every time the user switched between
+chatting and `/extract`.
+
+## 2026-10-11 — `/forget` does not reach conversation history
+
+Forgetting a memory removes it from the system prompt, but if the fact
+was already said in the conversation, the history still carries it to
+the model. Tested: after `/forget`, the model still answered with the
+forgotten name, taken from its own earlier reply.
+
+Not fixed here. Controlling what history reaches the model is Phase 4's
+job, and this is the clearest case for it.
