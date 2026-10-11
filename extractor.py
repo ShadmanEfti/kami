@@ -1,6 +1,6 @@
 import json
 import requests
-from config import OLLAMA_URL,MODEL
+from config import OLLAMA_URL,MODEL,THINK,OLLAMA_OPTIONS
 
 TRANSCRIPT_WINDOW=6
 MAX_CANDIDATES=5
@@ -50,7 +50,8 @@ def extract_candidates(user_messages,existing,blocked=()):
         ],
         "stream":False,
         "format":EXTRACTION_SCHEMA,
-        "options":{"temperature":0},
+        "think":THINK,
+        "options":{**OLLAMA_OPTIONS,"temperature":0},
     }
 
     try:

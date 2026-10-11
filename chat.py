@@ -1,12 +1,12 @@
 import requests
 import db
-from datetime import datetime
+from datetime import datetime,timezone
 from memory import (
     add_memory,list_memories,deactivate_memory,get_active_memories,
     add_candidate,list_pending,accept_candidate,reject_candidate,list_rejected
 )
 from extractor import extract_candidates,ExtractionError
-from config import OLLAMA_URL,MODEL
+from config import OLLAMA_URL,MODEL,THINK,OLLAMA_OPTIONS
 
 HELP_TEXT="""Commands:
   /remember [here] <text>  Store a memory (here = this conversation only)
@@ -22,6 +22,7 @@ def print_conversation_menu(conversations):
 
     for i, c in enumerate(conversations, start=1):
         ts = datetime.strptime(c["created_at"], "%Y-%m-%d %H:%M:%S")
+        ts = ts.replace(tzinfo=timezone.utc).astimezone()
         when = ts.strftime("%b %-d, %-I:%M %p")
         count = c["message_count"]
         label = "message" if count == 1 else "messages"
@@ -177,7 +178,7 @@ if __name__ == "__main__":
 
     messages = db.get_messages(conversation_id)
 
-    print(f"\nKAMI chat (V1) — conversation #{conversation_id}. Type 'exit' or 'quit' to stop.\n")
+    print(f"\nKAMI chat (V1) — conversation #{conversation_id} - model: {MODEL}. Type 'exit' or 'quit' to stop.\n")
     if messages:
         print(f"(Loaded {len(messages)} previous messages.)\n")
 
@@ -211,8 +212,15 @@ if __name__ == "__main__":
 
         response = requests.post(
             OLLAMA_URL,
-            json={"model": MODEL, "messages": payload_messages, "stream": False}
+            json={"model": MODEL,
+                  "messages": payload_messages,
+                  "stream": False,
+                  "think": THINK,
+                  "options": OLLAMA_OPTIONS,
+                  },
+                  timeout=120,
         )
+        response.raise_for_status()
         data = response.json()
         reply = data["message"]["content"]
 
