@@ -341,3 +341,45 @@ forgotten name, taken from its own earlier reply.
 
 Not fixed here. Controlling what history reaches the model is Phase 4's
 job, and this is the clearest case for it.
+
+## 2026-10-14 — One function builds what reaches the model
+
+`build_context()` in `context.py` is now the only place a chat payload
+is assembled: active memories become the system prompt, and the
+conversation's saved messages follow it. `chat.py` sends its result
+unchanged.
+
+History is read from SQLite on every call rather than kept in an
+in-memory list that mirrors the table. There is one copy of the
+conversation, so what the model sees cannot drift from what is stored.
+The message being answered is not saved yet (see the next entry), so
+it is passed in explicitly as `pending_user_message`.
+
+The function has no side effects: no printing, no writes. Phase 4
+needs a single point where context exists as a value, so it can be
+snapshotted, shown and diffed. A payload assembled in pieces across
+the chat loop cannot be.
+
+Verified: a resumed conversation still recalled its history, and
+`/remember` and `/forget` both took effect on the next turn.
+
+## 2026-10-14 — A turn is saved whole or not at all
+
+The user's message is no longer saved before the request. After a
+non-empty reply, `add_turn()` inserts the user message and the reply
+on one connection with one commit, and returns the reply's id.
+
+Before, the user message was written first. When Ollama returned an
+empty reply, the guard skipped saving the assistant turn but the user
+message stayed, so the next request sent two user messages in a row.
+A timeout or HTTP error left the same orphan behind. Now an empty
+reply, a timeout or a crash saves nothing.
+
+Two separate `add_message()` calls were rejected: a failure between
+them leaves the same half-turn, only more rarely.
+
+The returned id gives each reply a stable handle, which context
+snapshots can point at.
+
+Verified: after a normal turn, the latest four rows in `messages`
+alternate user/assistant (ids 53–56).

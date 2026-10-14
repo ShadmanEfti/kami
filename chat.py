@@ -1,5 +1,6 @@
 import requests
 import db
+from context import build_context
 from datetime import datetime,timezone
 from memory import (
     add_memory,list_memories,deactivate_memory,get_active_memories,
@@ -150,15 +151,7 @@ def handle_command(user_input,conversation_id):
 
     else:
         print(f"Unknown command: {command}. Try /help\n")
-
-
-def build_system_prompt(memories):
-
-    if not memories:
-        return None
-    lines="\n".join(f"- {m['content']}" for m in memories)
-    return f"You are a helpful assistant.\n\nKnown facts about the user:\n{lines}"
-
+   
         
 if __name__ == "__main__":
     db.init_db()
@@ -176,11 +169,11 @@ if __name__ == "__main__":
     else:
         conversation_id = db.create_conversation()
 
-    messages = db.get_messages(conversation_id)
+    count = len(db.get_messages(conversation_id))
 
     print(f"\nKAMI chat (V1) — conversation #{conversation_id} - model: {MODEL}. Type 'exit' or 'quit' to stop.\n")
-    if messages:
-        print(f"(Loaded {len(messages)} previous messages.)\n")
+    if count!=0:
+        print(f"(Loaded {count} previous messages.)\n")
 
     while True:
         try:
@@ -200,15 +193,7 @@ if __name__ == "__main__":
             handle_command(user_input,conversation_id)
             continue
 
-        messages.append({"role": "user", "content": user_input})
-        db.add_message(conversation_id, "user", user_input)
-
-        active=get_active_memories(conversation_id)
-        system_prompt=build_system_prompt(active)
-        if system_prompt is None:
-            payload_messages=messages
-        else:
-            payload_messages=[{"role":"system","content":system_prompt}]+messages
+        payload_messages=build_context(conversation_id,pending_user_message=user_input)
 
         response = requests.post(
             OLLAMA_URL,
@@ -227,8 +212,6 @@ if __name__ == "__main__":
         if not reply.strip():
             print("[warning: got an empty reply from Ollama — not saving this turn]\n")
             continue
-
-        messages.append({"role": "assistant", "content": reply})
-        db.add_message(conversation_id, "assistant", reply)
-
+           
+        db.add_turn(conversation_id,user_input,reply)
         print(f"Assistant: {reply}\n")

@@ -4,13 +4,11 @@ from pathlib import Path
 DB_PATH = Path(__file__).parent / "kami.db"
 SCHEMA_PATH = Path(__file__).parent / "schema.sql"
 
-
 def get_connection():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     return conn
-
 
 def init_db():
     conn = get_connection()
@@ -21,7 +19,6 @@ def init_db():
     finally:
         conn.close()
 
-
 def create_conversation() -> int:
     conn = get_connection()
     try:
@@ -30,7 +27,6 @@ def create_conversation() -> int:
         return cur.lastrowid
     finally:
         conn.close()
-
 
 def add_message(conversation_id: int, role: str, content: str) -> None:
     conn = get_connection()
@@ -43,6 +39,21 @@ def add_message(conversation_id: int, role: str, content: str) -> None:
     finally:
         conn.close()
 
+def add_turn(conversation_id:int,user_content:str,assistant_content:str)->int:
+    conn=get_connection()
+    try:
+        conn.execute(
+            "INSERT INTO messages (conversation_id,role,content) VALUES(?,?,?)",
+            (conversation_id,"user",user_content),
+        )
+        cur=conn.execute(
+            "INSERT INTO messages (conversation_id,role,content) VALUES(?,?,?)",
+            (conversation_id,"assistant",assistant_content),
+        )
+        conn.commit()
+        return cur.lastrowid
+    finally:
+        conn.close()
 
 def get_messages(conversation_id: int) -> list[dict]:
     conn = get_connection()
@@ -54,7 +65,6 @@ def get_messages(conversation_id: int) -> list[dict]:
         return [{"role": r["role"], "content": r["content"]} for r in rows]
     finally:
         conn.close()
-
 
 def list_conversations(limit: int = 10) -> list[dict]:
     conn = get_connection()
@@ -84,7 +94,6 @@ def list_conversations(limit: int = 10) -> list[dict]:
         return [dict(r) for r in rows]
     finally:
         conn.close()
-
 
 def get_latest_conversation_id():
     conn = get_connection()
