@@ -383,3 +383,29 @@ snapshots can point at.
 
 Verified: after a normal turn, the latest four rows in `messages`
 alternate user/assistant (ids 53–56).
+
+## 2026-10-20 — One segmented snapshot per reply
+
+Every reply gets a row in `context_snapshots` recording what produced
+it: the system instruction, the injected memories (with ids), the
+history (with ids), the exact payload, the model and the options,
+including `think`. It is saved inside `add_turn()`'s transaction, so a
+reply never exists without the context behind it.
+
+Segments rather than only the payload, because inspection needs to
+show system prompt, memories and history separately, and the payload
+merges memories into one string with no ids. The payload is stored as
+well, so the record stays exact if the prompt template changes.
+
+The payload is serialised canonically (sorted keys, fixed separators)
+before hashing, so identical context gives an identical hash. That is
+what `/diff` will use to report "unchanged". `json_valid` checks keep a
+malformed segment out of the table.
+
+A system message is still sent only when memories exist, preserving
+pre-Phase-4 behaviour; `system_prompt` is NULL when none was sent.
+
+Verified: two fresh conversations sending "hi" with the same memory
+produced the same hash (`3a944ec1`); a second turn's snapshot held 3
+messages to the first's 1; the pending user message's id was filled in
+(59 for reply 60); `/extract` added no snapshot.

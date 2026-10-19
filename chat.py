@@ -1,6 +1,6 @@
 import requests
 import db
-from context import build_context
+from context import build_context,render
 from datetime import datetime,timezone
 from memory import (
     add_memory,list_memories,deactivate_memory,get_active_memories,
@@ -193,7 +193,8 @@ if __name__ == "__main__":
             handle_command(user_input,conversation_id)
             continue
 
-        payload_messages=build_context(conversation_id,pending_user_message=user_input)
+        ctx=build_context(conversation_id,pending_user_message=user_input)
+        payload_messages=render(ctx)
 
         response = requests.post(
             OLLAMA_URL,
@@ -212,6 +213,13 @@ if __name__ == "__main__":
         if not reply.strip():
             print("[warning: got an empty reply from Ollama — not saving this turn]\n")
             continue
-           
-        db.add_turn(conversation_id,user_input,reply)
-        print(f"Assistant: {reply}\n")
+
+        reply_id=db.add_turn(conversation_id,user_input,reply,snapshot={
+            "system_prompt":ctx["system"] if ctx["memories"] else None,
+            "memories":ctx["memories"],
+            "messages":ctx["messages"],
+            "payload":payload_messages,
+            "model":MODEL,
+            "options":{"think":THINK,**OLLAMA_OPTIONS}
+        })
+        print(f"Assistant (#{reply_id}): {reply}\n")

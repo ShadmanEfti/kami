@@ -1,4 +1,5 @@
 import sqlite3
+import hashlib,json
 from pathlib import Path
 
 DB_PATH = Path(__file__).parent / "kami.db"
@@ -28,30 +29,36 @@ def create_conversation() -> int:
     finally:
         conn.close()
 
-def add_message(conversation_id: int, role: str, content: str) -> None:
-    conn = get_connection()
-    try:
-        conn.execute(
-            "INSERT INTO messages (conversation_id, role, content) VALUES (?, ?, ?)",
-            (conversation_id, role, content),
-        )
-        conn.commit()
-    finally:
-        conn.close()
-
-def add_turn(conversation_id:int,user_content:str,assistant_content:str)->int:
+def add_turn(conversation_id,user_content,assistant_content,snapshot):
     conn=get_connection()
     try:
+        user_id=conn.execute(
+            "INSERT INTO messages (conversation_id,role,content) VALUES(?,'user',?)",
+            (conversation_id,user_content)).lastrowid
+        reply_id=conn.execute(
+            "INSERT INTO messages (conversation_id,role,content) VALUES(?,'assistant',?)",
+            (conversation_id,assistant_content)).lastrowid
+
+        messages=[dict(m) for m in snapshot["messages"]]
+        messages[-1]["id"]=user_id
+
+        payload=json.dumps(snapshot["payload"],ensure_ascii=False,
+                           sort_keys=True,separators=(",",":"))
         conn.execute(
-            "INSERT INTO messages (conversation_id,role,content) VALUES(?,?,?)",
-            (conversation_id,"user",user_content),
-        )
-        cur=conn.execute(
-            "INSERT INTO messages (conversation_id,role,content) VALUES(?,?,?)",
-            (conversation_id,"assistant",assistant_content),
-        )
+            """INSERT INTO context_snapshots
+            (conversation_id,reply_message_id,kind,system_prompt,memories,
+            messages,payload,payload_hash,model,options)
+            VALUES(?,?,'chat',?,?,?,?,?,?,?)""",
+            (conversation_id,reply_id,
+             snapshot["system_prompt"],
+             json.dumps(snapshot["memories"],ensure_ascii=False),
+             json.dumps(messages,ensure_ascii=False),
+             payload,
+             hashlib.sha256(payload.encode()).hexdigest(),
+             snapshot["model"],
+             json.dumps(snapshot["options"],ensure_ascii=False)))
         conn.commit()
-        return cur.lastrowid
+        return reply_id
     finally:
         conn.close()
 
@@ -59,10 +66,10 @@ def get_messages(conversation_id: int) -> list[dict]:
     conn = get_connection()
     try:
         rows = conn.execute(
-            "SELECT role, content FROM messages WHERE conversation_id = ? ORDER BY id",
+            "SELECT id, role, content FROM messages WHERE conversation_id = ? ORDER BY id",
             (conversation_id,),
         ).fetchall()
-        return [{"role": r["role"], "content": r["content"]} for r in rows]
+        return [{"id": r["id"],"role":r["role"],"content":r["content"]} for r in rows]
     finally:
         conn.close()
 
@@ -92,15 +99,5 @@ def list_conversations(limit: int = 10) -> list[dict]:
             (limit,),
         ).fetchall()
         return [dict(r) for r in rows]
-    finally:
-        conn.close()
-
-def get_latest_conversation_id():
-    conn = get_connection()
-    try:
-        row = conn.execute(
-            "SELECT id FROM conversations ORDER BY created_at DESC LIMIT 1"
-        ).fetchone()
-        return row["id"] if row else None
     finally:
         conn.close()
