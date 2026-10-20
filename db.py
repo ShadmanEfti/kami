@@ -101,3 +101,30 @@ def list_conversations(limit: int = 10) -> list[dict]:
         return [dict(r) for r in rows]
     finally:
         conn.close()
+
+def count_turns(conversation_id):
+    conn=get_connection()
+    try:
+        row=conn.execute(
+            "SELECT COUNT(*) AS n FROM messages WHERE conversation_id=? AND role='assistant'",
+            (conversation_id,),
+        ).fetchone()
+        return row["n"]
+    finally:
+        conn.close()
+
+def get_reply_id(conversation_id,turn):
+    if turn<1:
+        return None
+    conn=get_connection()
+    try:
+        row=conn.execute(
+            """SELECT id FROM messages
+               WHERE conversation_id=? AND role='assistant'
+               ORDER BY id
+               LIMIT 1 OFFSET ?""",
+            (conversation_id,turn-1),
+        ).fetchone()
+        return row["id"] if row else None
+    finally:
+        conn.close()

@@ -409,3 +409,27 @@ Verified: two fresh conversations sending "hi" with the same memory
 produced the same hash (`3a944ec1`); a second turn's snapshot held 3
 messages to the first's 1; the pending user message's id was filled in
 (59 for reply 60); `/extract` added no snapshot.
+
+## 2026-10-21 — Replies are numbered per conversation, by derivation
+
+Replies print as `Assistant [n]`, where n counts from 1 within the
+conversation. Global message ids (`#60`, `#62`) were shown before:
+they jumped by two, climbed across conversations, and meant nothing
+to the user.
+
+The turn number is derived, not stored. `count_turns()` counts the
+conversation's assistant messages; `get_reply_id()` resolves turn n
+to the n-th one by id. `messages.id` stays the real key, and snapshots
+still point at it. No new column means nothing to keep in sync, and
+when retry and edit arrive, deciding which version "turn 3" means
+changes one query rather than stored data.
+
+Numbers are scoped to the current conversation, matching how
+candidates already work. Square brackets keep turns visually distinct
+from memory ids, which use `#`.
+
+The printed number is re-counted from the database after each turn
+instead of tracked in a variable, so resuming needs no special case.
+
+Verified: a new conversation printed [1] then [2]; resuming it printed
+[3]; turn 0 and a turn past the end both resolved to None.

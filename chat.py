@@ -214,7 +214,7 @@ if __name__ == "__main__":
             print("[warning: got an empty reply from Ollama — not saving this turn]\n")
             continue
 
-        reply_id=db.add_turn(conversation_id,user_input,reply,snapshot={
+        db.add_turn(conversation_id,user_input,reply,snapshot={
             "system_prompt":ctx["system"] if ctx["memories"] else None,
             "memories":ctx["memories"],
             "messages":ctx["messages"],
@@ -222,4 +222,4 @@ if __name__ == "__main__":
             "model":MODEL,
             "options":{"think":THINK,**OLLAMA_OPTIONS}
         })
-        print(f"Assistant (#{reply_id}): {reply}\n")
+        print(f"Assistant [{db.count_turns(conversation_id)}]: {reply}\n")
