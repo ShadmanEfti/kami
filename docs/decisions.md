@@ -433,3 +433,31 @@ instead of tracked in a variable, so resuming needs no special case.
 
 Verified: a new conversation printed [1] then [2]; resuming it printed
 [3]; turn 0 and a turn past the end both resolved to None.
+
+## 2026-10-24 — `/context` shows the record, not a rebuild
+
+`/context [n]` resolves turn n to its reply and prints that reply's
+snapshot in three segments: system prompt, memories, messages. With no
+number it shows the latest turn.
+
+It reads the stored snapshot rather than calling `build_context()`
+again. Rebuilding would show today's memories and exclusions, not what
+the model actually saw: a memory forgotten since would vanish from an
+old turn's context, which is exactly the kind of silent rewrite KAMI
+exists to prevent.
+
+The history ends on the user message being answered; a reply is never
+part of its own context. Turn numbers inside it are derived from the
+alternating order `add_turn()` guarantees.
+
+Long text is cut to one line, since the CLI is for scanning. Formatting
+is a separate function from loading, so the GUI panel can read the same
+snapshot dict and ignore the terminal layout.
+
+Replies from before snapshots existed report that no context was
+recorded rather than reconstructing one.
+
+Verified: in one conversation, a memory added between turns was absent
+from [1]'s context and present in [2]'s, with different hashes;
+repeated `/context` calls returned the same hash; `/context` added no
+rows to `messages`.

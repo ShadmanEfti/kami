@@ -128,3 +128,19 @@ def get_reply_id(conversation_id,turn):
         return row["id"] if row else None
     finally:
         conn.close()
+
+def get_snapshot(reply_message_id):
+    conn=get_connection()
+    try:
+        row=conn.execute(
+            "SELECT * FROM context_snapshots WHERE reply_message_id=?",
+            (reply_message_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        snap=dict(row)
+        for key in ("memories","messages","payload","options"):
+            snap[key]=json.loads(snap[key])
+        return snap
+    finally:
+        conn.close()

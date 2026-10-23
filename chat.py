@@ -1,6 +1,6 @@
 import requests
 import db
-from context import build_context,render
+from context import build_context,render,format_snapshot
 from datetime import datetime,timezone
 from memory import (
     add_memory,list_memories,deactivate_memory,get_active_memories,
@@ -17,6 +17,7 @@ HELP_TEXT="""Commands:
   /pending                 List suggestions waiting for a decision
   /accept <id> [here]      Save a suggestion (here = this conversation only)
   /reject <id>             Discard a suggestion
+  /context [n]             Show what the model saw for reply n (default: latest)
   /help                    Show this message"""
 
 def print_conversation_menu(conversations):
@@ -145,6 +146,28 @@ def handle_command(user_input,conversation_id):
             print(f"Rejected #{argument}\n")
         else:
             print(f"No pending suggestion #{argument} here\n")
+
+    elif command=="/context":
+        if argument=="":
+            turn=db.count_turns(conversation_id)
+            if turn==0:
+                print("No reply yet in this conversation.\n")
+                return
+        elif argument.isdigit():
+            turn=int(argument)
+        else:
+            print("Usage: /context [n]\n")
+            return
+
+        reply_id=db.get_reply_id(conversation_id,turn)
+        if reply_id is None:
+            print(f"No turn [{turn}] in this conversation.\n")
+            return
+        snap=db.get_snapshot(reply_id)
+        if snap is None:
+            print(f"No context recorded for [{turn}] (before snapshots existed).\n")
+            return
+        print(format_snapshot(snap,turn))
 
     elif command=="/help":
         print(HELP_TEXT+"\n")

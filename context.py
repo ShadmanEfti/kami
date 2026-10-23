@@ -18,3 +18,32 @@ def render(ctx):
     facts="\n".join(f"- {m['content']}" for m in ctx["memories"])
     system=f"{ctx['system']}\n\nKnown facts about the user:\n{facts}"
     return [{"role":"system","content":system}]+history
+
+def _one_line(text,width=80):
+    text=" ".join(text.split())
+    return text if len(text)<=width else text[:width-1]+"..."
+
+def format_snapshot(snap,turn):
+    lines=[f"Context for [{turn}] · {snap['model']} · hash {snap['payload_hash'][:8]}",""]
+
+    lines.append("-- System prompt --")
+    lines.append(snap["system_prompt"] or "(none sent)")
+    lines.append("")
+
+    lines.append(f"-- Memories ({len(snap['memories'])}) --")
+    if not snap["memories"]:
+        lines.append("(none)")
+    for m in snap["memories"]:
+        lines.append(f" #{m['id']} {_one_line(m['content'])}")
+    lines.append("")
+
+    lines.append(f"-- Messages ({len(snap['messages'])}) --")
+    k=0
+    for m in snap["messages"]:
+        if m["role"]=="user":
+            k+=1
+            lines.append(f" [{k}] You:       {_one_line(m['content'])}")
+        else:
+            lines.append(f"     Assistant: {_one_line(m['content'])}")
+
+    return "\n".join(lines)+"\n"
