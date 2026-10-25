@@ -243,6 +243,8 @@ if __name__ == "__main__":
             "messages":ctx["messages"],
             "payload":payload_messages,
             "model":MODEL,
+            "prompt_tokens":data.get("prompt_eval_count"),
+            "reply_tokens":data.get("eval_count"),
             "options":{"think":THINK,**OLLAMA_OPTIONS}
         })
         print(f"Assistant [{db.count_turns(conversation_id)}]: {reply}\n")

@@ -44,6 +44,8 @@ CREATE TABLE IF NOT EXISTS context_snapshots(
     payload TEXT NOT NULL CHECK(json_valid(payload)),
     payload_hash TEXT NOT NULL,
     model TEXT NOT NULL,
+    prompt_tokens INTEGER,
+    reply_tokens INTEGER,
     options TEXT NOT NULL CHECK(json_valid(options)),
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     CHECK ((kind='chat')=(reply_message_id IS NOT NULL))

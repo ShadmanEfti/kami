@@ -66,6 +66,8 @@ becomes necessary the moment KAMI is used for real rather than tested,
 which is the trigger to revisit this — likely at the end of Phase 3,
 once the memory store holds anything worth keeping.
 
+Resolved 2026-10-25: see the migration entry.
+
 ## 2026-09-16 — Slash commands are control-plane, not conversation
 
 `/remember`, `/memories`, `/forget` and `/help` are intercepted before
@@ -461,3 +463,32 @@ Verified: in one conversation, a memory added between turns was absent
 from [1]'s context and present in [2]'s, with different hashes;
 repeated `/context` calls returned the same hash; `/context` added no
 rows to `messages`.
+
+## 2026-10-25 — Snapshots record real token counts; first migration
+
+Each snapshot stores `prompt_tokens` (Ollama's `prompt_eval_count`)
+and `reply_tokens` (`eval_count`). `/context` shows the first against
+the window the snapshot actually ran under, e.g. `124 / 8,192 tokens`,
+read from the snapshot's own `options` rather than the current config.
+
+Probed before building, since prompt-prefix reuse could have made the
+count cover only newly processed tokens. An identical request repeated
+returned the same count (34, 34), and adding a turn grew it by the
+added content (130). It reports the full context size. One probe on
+one Ollama version, not a guarantee.
+
+Both columns are nullable. Snapshots from before this change say
+"tokens not recorded" rather than showing an estimate.
+
+First real migration. `CREATE TABLE IF NOT EXISTS` never alters an
+existing table, so `_migrate()` runs at every startup and adds any
+missing column after checking `PRAGMA table_info`. It is a no-op on a
+fresh database, where `schema.sql` already defines the columns, and on
+every later run. Consequence: column order differs between migrated
+and fresh databases, so code must never rely on column position. All
+inserts name their columns and all reads go through `dict(row)`.
+
+Verified: migration added both columns to the existing database and
+repeated runs raised nothing; a fresh database got them from
+`schema.sql`; counts grew from 65 to 124 across two turns; an older
+snapshot reported no count.

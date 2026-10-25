@@ -11,11 +11,18 @@ def get_connection():
     conn.execute("PRAGMA foreign_keys = ON")
     return conn
 
+def _migrate(conn):
+    cols={r["name"] for r in conn.execute("PRAGMA table_info(context_snapshots)")}
+    for name in ("prompt_tokens","reply_tokens"):
+        if name not in cols:
+            conn.execute(f"ALTER TABLE context_snapshots ADD COLUMN {name} INTEGER")
+
 def init_db():
     conn = get_connection()
     try:
         with open(SCHEMA_PATH) as f:
             conn.executescript(f.read())
+        _migrate(conn)
         conn.commit()
     finally:
         conn.close()
@@ -47,8 +54,8 @@ def add_turn(conversation_id,user_content,assistant_content,snapshot):
         conn.execute(
             """INSERT INTO context_snapshots
             (conversation_id,reply_message_id,kind,system_prompt,memories,
-            messages,payload,payload_hash,model,options)
-            VALUES(?,?,'chat',?,?,?,?,?,?,?)""",
+            messages,payload,payload_hash,model,prompt_tokens,reply_tokens,options)
+            VALUES(?,?,'chat',?,?,?,?,?,?,?,?,?)""",
             (conversation_id,reply_id,
              snapshot["system_prompt"],
              json.dumps(snapshot["memories"],ensure_ascii=False),
@@ -56,6 +63,8 @@ def add_turn(conversation_id,user_content,assistant_content,snapshot):
              payload,
              hashlib.sha256(payload.encode()).hexdigest(),
              snapshot["model"],
+             snapshot.get("prompt_tokens"),
+             snapshot.get("reply_tokens"),
              json.dumps(snapshot["options"],ensure_ascii=False)))
         conn.commit()
         return reply_id

@@ -24,7 +24,15 @@ def _one_line(text,width=80):
     return text if len(text)<=width else text[:width-1]+"..."
 
 def format_snapshot(snap,turn):
-    lines=[f"Context for [{turn}] · {snap['model']} · hash {snap['payload_hash'][:8]}",""]
+    tokens=snap.get("prompt_tokens")
+    limit=snap["options"].get("num_ctx")
+    if tokens is None:
+        size="tokens not recorded"
+    elif limit:
+        size=f"{tokens:,} / {limit:,} tokens"
+    else:
+        size=f"{tokens:,} tokens"
+    lines=[f"Context for [{turn}] · {snap['model']} · {size} · hash {snap['payload_hash'][:8]}",""]
 
     lines.append("-- System prompt --")
     lines.append(snap["system_prompt"] or "(none sent)")
