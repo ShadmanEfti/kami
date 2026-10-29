@@ -520,3 +520,17 @@ Verified: a memory added between turns showed as `+ #7`; a memory
 forgotten showed as `- #5` together with the system prompt dropping,
 which explained why a full exchange added only 14 tokens; the first
 turn reports nothing to compare.
+
+## 2026-10-29 — Turn labels come from the conversation, not the snapshot
+
+`/context` used to number turns by counting user messages inside the
+snapshot. Once a turn can be excluded, a later snapshot no longer
+contains it, and its messages would be renumbered: turn 2 shown as [1].
+
+`turn_labels()` now maps every message id in the conversation to its
+turn, defined as `count_turns()` defines it: turn k is the k-th reply.
+Snapshots carry real message ids, so labels are looked up, never
+recounted. Exclusions cannot shift a number.
+
+Verified: `/context` output on three existing conversations was
+unchanged by the refactor.

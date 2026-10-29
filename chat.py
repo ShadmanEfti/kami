@@ -5,7 +5,7 @@ from memory import (
     add_memory,list_memories,deactivate_memory,get_active_memories,
     add_candidate,list_pending,accept_candidate,reject_candidate,list_rejected
 )
-from context import build_context,render,format_snapshot,format_changes,diff_snapshots
+from context import build_context,render,format_snapshot,format_changes,diff_snapshots,turn_labels
 from extractor import extract_candidates,ExtractionError
 from config import OLLAMA_URL,MODEL,THINK,OLLAMA_OPTIONS
 
@@ -167,8 +167,9 @@ def handle_command(user_input,conversation_id):
         if snap is None:
             print(f"No context recorded for [{turn}] (before snapshots existed).\n")
             return
-        
-        print(format_snapshot(snap,turn))
+
+        labels=turn_labels(conversation_id)
+        print(format_snapshot(snap,turn,labels))
         if turn==1:
             print("-- Changed since previous --\n (first turn, nothing to compare)\n")
         else:
@@ -176,7 +177,7 @@ def handle_command(user_input,conversation_id):
             if prev is None:
                 print(f"-- Changed since [{turn-1}] --\n (previous context not recorder)\n")
             else:
-                print(format_changes(diff_snapshots(prev,snap),prev,turn-1))
+                print(format_changes(diff_snapshots(prev,snap),labels,turn-1))
 
     elif command=="/help":
         print(HELP_TEXT+"\n")
