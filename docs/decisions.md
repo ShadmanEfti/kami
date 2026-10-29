@@ -492,3 +492,31 @@ Verified: migration added both columns to the existing database and
 repeated runs raised nothing; a fresh database got them from
 `schema.sql`; counts grew from 65 to 124 across two turns; an older
 snapshot reported no count.
+
+## 2026-10-29 — Changes are shown inside `/context`, not as `/diff`
+
+Each `/context n` ends with "Changed since [n−1]": tokens before and
+after, memories added or removed, messages added or removed, and any
+change to the system prompt, model or options.
+
+Planned as a separate `/diff a b`, then folded into `/context`. The
+question that matters is "why did the model behave differently at this
+turn?", which always compares with the turn before, and the GUI panel
+will show it in the same place as the context. Arbitrary pairs can
+come later if missed.
+
+The payload hash cannot answer it: consecutive turns always differ,
+because each history contains the last plus two new messages. So the
+diff separates normal growth (the previous reply and the new question,
+appended at the end) from everything else. Normal growth is collapsed
+to one line; anything else is listed.
+
+Messages and memories are matched by id, not content, so a repeated
+"hi" is not mistaken for the same message. `diff_snapshots()` returns
+plain data with ids for the GUI; `format_changes()` turns message ids
+into turn labels for the terminal.
+
+Verified: a memory added between turns showed as `+ #7`; a memory
+forgotten showed as `- #5` together with the system prompt dropping,
+which explained why a full exchange added only 14 tokens; the first
+turn reports nothing to compare.
