@@ -534,3 +534,35 @@ recounted. Exclusions cannot shift a number.
 
 Verified: `/context` output on three existing conversations was
 unchanged by the refactor.
+
+## 2026-10-31 — Turns can be excluded from context
+
+`/exclude n` keeps turn n out of every later request; `/include n` puts
+it back. Both take effect on the next message. This closes the
+2026-10-11 leak: a forgotten fact repeated in an earlier reply no longer
+reaches the model once that turn is excluded.
+
+Whole turns, not single messages. Excluding only a reply would leave two
+user messages in a row, the state `add_turn()` exists to prevent, and
+break the alternation turn labels rely on.
+
+Exclusions live in their own table, keyed by the turn's reply id.
+`messages` stays an append-only record of what was said, and only
+`build_context()` consults the table. Turn numbers, `count_turns()` and
+`get_reply_id()` read the unfiltered history, so excluding a turn never
+renumbers the others. `/extract` reads the filtered history, so an
+excluded turn cannot come back as a memory suggestion.
+
+`/include` deletes the row rather than soft-deleting it. The history of
+what was excluded when is already kept: every snapshot records what
+was actually sent at that turn.
+
+Verified: after forgetting the memory and excluding the two turns that
+mentioned it, the model no longer knew the name; `/context` showed the
+three removed messages and tokens falling from 85 to 59; excluding a
+turn left later numbering unchanged.
+
+Observed: with the memory forgotten but the history intact, the model
+once repeated the name (2026-10-11) and once refused to (this test).
+The leak is real but not reliable to reproduce. A fact the user states
+in the conversation itself is the dependable demonstration.

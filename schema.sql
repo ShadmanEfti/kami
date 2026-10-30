@@ -51,6 +51,11 @@ CREATE TABLE IF NOT EXISTS context_snapshots(
     CHECK ((kind='chat')=(reply_message_id IS NOT NULL))
 );
 
+CREATE TABLE IF NOT EXISTS excluded_turns(
+    reply_message_id INTEGER PRIMARY KEY REFERENCES messages(id),
+    excluded_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE INDEX IF NOT EXISTS idx_messages_conversation_id
     ON messages(conversation_id);
 

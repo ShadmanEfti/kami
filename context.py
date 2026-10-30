@@ -6,7 +6,16 @@ SYSTEM_INSTRUCTION="You are a helpful assistant."
 def build_context(conversation_id,pending_user_message=None):
     memories=[{"id":m["id"],"content":m["content"]}
               for m in get_active_memories(conversation_id)]
-    messages=db.get_messages(conversation_id)
+    
+    excluded=db.get_excluded_reply_ids(conversation_id)
+    messages=[]
+    for m in db.get_messages(conversation_id):
+        if m["role"]=="assistant" and m["id"] in excluded:
+            while messages and messages[-1]["role"]=="user":
+                messages.pop()
+            continue
+        messages.append(m)
+        
     if pending_user_message is not None:
         messages=messages+[{"id":None,"role":"user","content":pending_user_message}]
     return {"system":SYSTEM_INSTRUCTION,"memories":memories,"messages":messages}

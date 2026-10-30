@@ -153,3 +153,40 @@ def get_snapshot(reply_message_id):
         return snap
     finally:
         conn.close()
+
+def exclude_turn(reply_message_id):
+    conn=get_connection()
+    try:
+        cur=conn.execute(
+            "INSERT OR IGNORE INTO excluded_turns (reply_message_id) VALUES (?)",
+            (reply_message_id,),
+        )
+        conn.commit()
+        return cur.rowcount==1
+    finally:
+        conn.close()
+
+def include_turn(reply_message_id):
+    conn=get_connection()
+    try:
+        cur=conn.execute(
+            "DELETE FROM excluded_turns WHERE reply_message_id=?",
+            (reply_message_id,),
+        )
+        conn.commit()
+        return cur.rowcount==1
+    finally:
+        conn.close()
+
+def get_excluded_reply_ids(conversation_id):
+    conn=get_connection()
+    try:
+        rows=conn.execute(
+            """SELECT e.reply_message_id FROM excluded_turns e
+               JOIN messages m ON m.id=e.reply_message_id
+               WHERE conversation_id=?""",
+            (conversation_id,),
+        ).fetchall()
+        return {r["reply_message_id"] for r in rows}
+    finally:
+        conn.close()

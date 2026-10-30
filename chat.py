@@ -18,6 +18,8 @@ HELP_TEXT="""Commands:
   /accept <id> [here]      Save a suggestion (here = this conversation only)
   /reject <id>             Discard a suggestion
   /context [n]             Show what the model saw for reply n (default: latest)
+  /exclude <n>             Keep turn n out of the model's context
+  /include <n>             Put turn n back into context
   /help                    Show this message"""
 
 def print_conversation_menu(conversations):
@@ -80,7 +82,7 @@ def handle_command(user_input,conversation_id):
             print(f"No active memory with id {argument}\n")
 
     elif command=="/extract":
-        history=db.get_messages(conversation_id)
+        history=build_context(conversation_id)["messages"]
         user_messages=[m["content"] for m in history if m["role"]=="user"]
         if not user_messages:
             print("Nothing to extract yet. Say something first.\n")
@@ -178,6 +180,26 @@ def handle_command(user_input,conversation_id):
                 print(f"-- Changed since [{turn-1}] --\n (previous context not recorder)\n")
             else:
                 print(format_changes(diff_snapshots(prev,snap),labels,turn-1))
+
+    elif command in ("/exclude","/include"):
+        if not argument.isdigit():
+            print(f"Usage: {command} <n>\n")
+            return
+        turn=int(argument)
+        reply_id=db.get_reply_id(conversation_id,turn)
+        if reply_id is None:
+            print(f"No turn [{turn}] in this conversation.\n")
+            return
+        if command=="/exclude":
+            if db.exclude_turn(reply_id):
+                print(f"Excluded [{turn}] from context, starting with your next message.\n")
+            else:
+                print(f"[{turn}] is already excluded.\n")
+        else:
+            if db.include_turn(reply_id):
+                print(f"Included [{turn}] in context again, starting with your next message.\n")
+            else:
+                print(f"[{turn}] is not excluded.\n")
 
     elif command=="/help":
         print(HELP_TEXT+"\n")
