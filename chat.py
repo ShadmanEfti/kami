@@ -5,6 +5,7 @@ from memory import (
     add_memory,list_memories,deactivate_memory,get_active_memories,
     add_candidate,list_pending,accept_candidate,reject_candidate,list_rejected
 )
+from context import build_context,render,format_snapshot,format_changes,diff_snapshots,turn_labels
 from extractor import extract_candidates,ExtractionError
 from config import OLLAMA_URL,MODEL,THINK,OLLAMA_OPTIONS
 
@@ -16,6 +17,9 @@ HELP_TEXT="""Commands:
   /pending                 List suggestions waiting for a decision
   /accept <id> [here]      Save a suggestion (here = this conversation only)
   /reject <id>             Discard a suggestion
+  /context [n]             Show what the model saw for reply n (default: latest)
+  /exclude <n>             Keep turn n out of the model's context
+  /include <n>             Put turn n back into context
   /help                    Show this message"""
 
 def print_conversation_menu(conversations):
@@ -78,7 +82,7 @@ def handle_command(user_input,conversation_id):
             print(f"No active memory with id {argument}\n")
 
     elif command=="/extract":
-        history=db.get_messages(conversation_id)
+        history=build_context(conversation_id)["messages"]
         user_messages=[m["content"] for m in history if m["role"]=="user"]
         if not user_messages:
             print("Nothing to extract yet. Say something first.\n")
@@ -145,20 +149,64 @@ def handle_command(user_input,conversation_id):
         else:
             print(f"No pending suggestion #{argument} here\n")
 
+    elif command=="/context":
+        if argument=="":
+            turn=db.count_turns(conversation_id)
+            if turn==0:
+                print("No reply yet in this conversation.\n")
+                return
+        elif argument.isdigit():
+            turn=int(argument)
+        else:
+            print("Usage: /context [n]\n")
+            return
+
+        reply_id=db.get_reply_id(conversation_id,turn)
+        if reply_id is None:
+            print(f"No turn [{turn}] in this conversation.\n")
+            return
+        snap=db.get_snapshot(reply_id)
+        if snap is None:
+            print(f"No context recorded for [{turn}] (before snapshots existed).\n")
+            return
+
+        labels=turn_labels(conversation_id)
+        print(format_snapshot(snap,turn,labels))
+        if turn==1:
+            print("-- Changed since previous --\n (first turn, nothing to compare)\n")
+        else:
+            prev=db.get_snapshot(db.get_reply_id(conversation_id,turn-1))
+            if prev is None:
+                print(f"-- Changed since [{turn-1}] --\n (previous context not recorder)\n")
+            else:
+                print(format_changes(diff_snapshots(prev,snap),labels,turn-1))
+
+    elif command in ("/exclude","/include"):
+        if not argument.isdigit():
+            print(f"Usage: {command} <n>\n")
+            return
+        turn=int(argument)
+        reply_id=db.get_reply_id(conversation_id,turn)
+        if reply_id is None:
+            print(f"No turn [{turn}] in this conversation.\n")
+            return
+        if command=="/exclude":
+            if db.exclude_turn(reply_id):
+                print(f"Excluded [{turn}] from context, starting with your next message.\n")
+            else:
+                print(f"[{turn}] is already excluded.\n")
+        else:
+            if db.include_turn(reply_id):
+                print(f"Included [{turn}] in context again, starting with your next message.\n")
+            else:
+                print(f"[{turn}] is not excluded.\n")
+
     elif command=="/help":
         print(HELP_TEXT+"\n")
 
     else:
         print(f"Unknown command: {command}. Try /help\n")
-
-
-def build_system_prompt(memories):
-
-    if not memories:
-        return None
-    lines="\n".join(f"- {m['content']}" for m in memories)
-    return f"You are a helpful assistant.\n\nKnown facts about the user:\n{lines}"
-
+   
         
 if __name__ == "__main__":
     db.init_db()
@@ -176,11 +224,11 @@ if __name__ == "__main__":
     else:
         conversation_id = db.create_conversation()
 
-    messages = db.get_messages(conversation_id)
+    count = len(db.get_messages(conversation_id))
 
     print(f"\nKAMI chat (V1) — conversation #{conversation_id} - model: {MODEL}. Type 'exit' or 'quit' to stop.\n")
-    if messages:
-        print(f"(Loaded {len(messages)} previous messages.)\n")
+    if count!=0:
+        print(f"(Loaded {count} previous messages.)\n")
 
     while True:
         try:
@@ -200,27 +248,25 @@ if __name__ == "__main__":
             handle_command(user_input,conversation_id)
             continue
 
-        messages.append({"role": "user", "content": user_input})
-        db.add_message(conversation_id, "user", user_input)
-
-        active=get_active_memories(conversation_id)
-        system_prompt=build_system_prompt(active)
-        if system_prompt is None:
-            payload_messages=messages
-        else:
-            payload_messages=[{"role":"system","content":system_prompt}]+messages
-
-        response = requests.post(
-            OLLAMA_URL,
-            json={"model": MODEL,
-                  "messages": payload_messages,
-                  "stream": False,
-                  "think": THINK,
-                  "options": OLLAMA_OPTIONS,
-                  },
-                  timeout=120,
-        )
-        response.raise_for_status()
+        ctx=build_context(conversation_id,pending_user_message=user_input)
+        payload_messages=render(ctx)
+        
+        try:
+            response = requests.post(
+                        OLLAMA_URL,
+                        json={"model": MODEL,
+                              "messages": payload_messages,
+                              "stream": False,
+                              "think": THINK,
+                              "options": OLLAMA_OPTIONS,
+                              },
+                              timeout=120,
+                    )
+            response.raise_for_status()
+        except requests.RequestException as e:
+            print(f"[error: could not reach the model — {e.__class__.__name__}. Nothing was saved; try again.]\n")
+            continue
+        
         data = response.json()
         reply = data["message"]["content"]
 
@@ -228,7 +274,14 @@ if __name__ == "__main__":
             print("[warning: got an empty reply from Ollama — not saving this turn]\n")
             continue
 
-        messages.append({"role": "assistant", "content": reply})
-        db.add_message(conversation_id, "assistant", reply)
-
-        print(f"Assistant: {reply}\n")
+        db.add_turn(conversation_id,user_input,reply,snapshot={
+            "system_prompt":ctx["system"] if ctx["memories"] else None,
+            "memories":ctx["memories"],
+            "messages":ctx["messages"],
+            "payload":payload_messages,
+            "model":MODEL,
+            "prompt_tokens":data.get("prompt_eval_count"),
+            "reply_tokens":data.get("eval_count"),
+            "options":{"think":THINK,**OLLAMA_OPTIONS}
+        })
+        print(f"Assistant [{db.count_turns(conversation_id)}]: {reply}\n")

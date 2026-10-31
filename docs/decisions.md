@@ -66,6 +66,8 @@ becomes necessary the moment KAMI is used for real rather than tested,
 which is the trigger to revisit this — likely at the end of Phase 3,
 once the memory store holds anything worth keeping.
 
+Resolved 2026-10-25: see the migration entry.
+
 ## 2026-09-16 — Slash commands are control-plane, not conversation
 
 `/remember`, `/memories`, `/forget` and `/help` are intercepted before
@@ -341,3 +343,240 @@ forgotten name, taken from its own earlier reply.
 
 Not fixed here. Controlling what history reaches the model is Phase 4's
 job, and this is the clearest case for it.
+
+## 2026-10-14 — One function builds what reaches the model
+
+`build_context()` in `context.py` is now the only place a chat payload
+is assembled: active memories become the system prompt, and the
+conversation's saved messages follow it. `chat.py` sends its result
+unchanged.
+
+History is read from SQLite on every call rather than kept in an
+in-memory list that mirrors the table. There is one copy of the
+conversation, so what the model sees cannot drift from what is stored.
+The message being answered is not saved yet (see the next entry), so
+it is passed in explicitly as `pending_user_message`.
+
+The function has no side effects: no printing, no writes. Phase 4
+needs a single point where context exists as a value, so it can be
+snapshotted, shown and diffed. A payload assembled in pieces across
+the chat loop cannot be.
+
+Verified: a resumed conversation still recalled its history, and
+`/remember` and `/forget` both took effect on the next turn.
+
+## 2026-10-14 — A turn is saved whole or not at all
+
+The user's message is no longer saved before the request. After a
+non-empty reply, `add_turn()` inserts the user message and the reply
+on one connection with one commit, and returns the reply's id.
+
+Before, the user message was written first. When Ollama returned an
+empty reply, the guard skipped saving the assistant turn but the user
+message stayed, so the next request sent two user messages in a row.
+A timeout or HTTP error left the same orphan behind. Now an empty
+reply, a timeout or a crash saves nothing.
+
+Two separate `add_message()` calls were rejected: a failure between
+them leaves the same half-turn, only more rarely.
+
+The returned id gives each reply a stable handle, which context
+snapshots can point at.
+
+Verified: after a normal turn, the latest four rows in `messages`
+alternate user/assistant (ids 53–56).
+
+## 2026-10-20 — One segmented snapshot per reply
+
+Every reply gets a row in `context_snapshots` recording what produced
+it: the system instruction, the injected memories (with ids), the
+history (with ids), the exact payload, the model and the options,
+including `think`. It is saved inside `add_turn()`'s transaction, so a
+reply never exists without the context behind it.
+
+Segments rather than only the payload, because inspection needs to
+show system prompt, memories and history separately, and the payload
+merges memories into one string with no ids. The payload is stored as
+well, so the record stays exact if the prompt template changes.
+
+The payload is serialised canonically (sorted keys, fixed separators)
+before hashing, so identical context gives an identical hash. That is
+what `/diff` will use to report "unchanged". `json_valid` checks keep a
+malformed segment out of the table.
+
+A system message is still sent only when memories exist, preserving
+pre-Phase-4 behaviour; `system_prompt` is NULL when none was sent.
+
+Verified: two fresh conversations sending "hi" with the same memory
+produced the same hash (`3a944ec1`); a second turn's snapshot held 3
+messages to the first's 1; the pending user message's id was filled in
+(59 for reply 60); `/extract` added no snapshot.
+
+## 2026-10-21 — Replies are numbered per conversation, by derivation
+
+Replies print as `Assistant [n]`, where n counts from 1 within the
+conversation. Global message ids (`#60`, `#62`) were shown before:
+they jumped by two, climbed across conversations, and meant nothing
+to the user.
+
+The turn number is derived, not stored. `count_turns()` counts the
+conversation's assistant messages; `get_reply_id()` resolves turn n
+to the n-th one by id. `messages.id` stays the real key, and snapshots
+still point at it. No new column means nothing to keep in sync, and
+when retry and edit arrive, deciding which version "turn 3" means
+changes one query rather than stored data.
+
+Numbers are scoped to the current conversation, matching how
+candidates already work. Square brackets keep turns visually distinct
+from memory ids, which use `#`.
+
+The printed number is re-counted from the database after each turn
+instead of tracked in a variable, so resuming needs no special case.
+
+Verified: a new conversation printed [1] then [2]; resuming it printed
+[3]; turn 0 and a turn past the end both resolved to None.
+
+## 2026-10-24 — `/context` shows the record, not a rebuild
+
+`/context [n]` resolves turn n to its reply and prints that reply's
+snapshot in three segments: system prompt, memories, messages. With no
+number it shows the latest turn.
+
+It reads the stored snapshot rather than calling `build_context()`
+again. Rebuilding would show today's memories and exclusions, not what
+the model actually saw: a memory forgotten since would vanish from an
+old turn's context, which is exactly the kind of silent rewrite KAMI
+exists to prevent.
+
+The history ends on the user message being answered; a reply is never
+part of its own context. Turn numbers inside it are derived from the
+alternating order `add_turn()` guarantees.
+
+Long text is cut to one line, since the CLI is for scanning. Formatting
+is a separate function from loading, so the GUI panel can read the same
+snapshot dict and ignore the terminal layout.
+
+Replies from before snapshots existed report that no context was
+recorded rather than reconstructing one.
+
+Verified: in one conversation, a memory added between turns was absent
+from [1]'s context and present in [2]'s, with different hashes;
+repeated `/context` calls returned the same hash; `/context` added no
+rows to `messages`.
+
+## 2026-10-25 — Snapshots record real token counts; first migration
+
+Each snapshot stores `prompt_tokens` (Ollama's `prompt_eval_count`)
+and `reply_tokens` (`eval_count`). `/context` shows the first against
+the window the snapshot actually ran under, e.g. `124 / 8,192 tokens`,
+read from the snapshot's own `options` rather than the current config.
+
+Probed before building, since prompt-prefix reuse could have made the
+count cover only newly processed tokens. An identical request repeated
+returned the same count (34, 34), and adding a turn grew it by the
+added content (130). It reports the full context size. One probe on
+one Ollama version, not a guarantee.
+
+Both columns are nullable. Snapshots from before this change say
+"tokens not recorded" rather than showing an estimate.
+
+First real migration. `CREATE TABLE IF NOT EXISTS` never alters an
+existing table, so `_migrate()` runs at every startup and adds any
+missing column after checking `PRAGMA table_info`. It is a no-op on a
+fresh database, where `schema.sql` already defines the columns, and on
+every later run. Consequence: column order differs between migrated
+and fresh databases, so code must never rely on column position. All
+inserts name their columns and all reads go through `dict(row)`.
+
+Verified: migration added both columns to the existing database and
+repeated runs raised nothing; a fresh database got them from
+`schema.sql`; counts grew from 65 to 124 across two turns; an older
+snapshot reported no count.
+
+## 2026-10-29 — Changes are shown inside `/context`, not as `/diff`
+
+Each `/context n` ends with "Changed since [n−1]": tokens before and
+after, memories added or removed, messages added or removed, and any
+change to the system prompt, model or options.
+
+Planned as a separate `/diff a b`, then folded into `/context`. The
+question that matters is "why did the model behave differently at this
+turn?", which always compares with the turn before, and the GUI panel
+will show it in the same place as the context. Arbitrary pairs can
+come later if missed.
+
+The payload hash cannot answer it: consecutive turns always differ,
+because each history contains the last plus two new messages. So the
+diff separates normal growth (the previous reply and the new question,
+appended at the end) from everything else. Normal growth is collapsed
+to one line; anything else is listed.
+
+Messages and memories are matched by id, not content, so a repeated
+"hi" is not mistaken for the same message. `diff_snapshots()` returns
+plain data with ids for the GUI; `format_changes()` turns message ids
+into turn labels for the terminal.
+
+Verified: a memory added between turns showed as `+ #7`; a memory
+forgotten showed as `- #5` together with the system prompt dropping,
+which explained why a full exchange added only 14 tokens; the first
+turn reports nothing to compare.
+
+## 2026-10-29 — Turn labels come from the conversation, not the snapshot
+
+`/context` used to number turns by counting user messages inside the
+snapshot. Once a turn can be excluded, a later snapshot no longer
+contains it, and its messages would be renumbered: turn 2 shown as [1].
+
+`turn_labels()` now maps every message id in the conversation to its
+turn, defined as `count_turns()` defines it: turn k is the k-th reply.
+Snapshots carry real message ids, so labels are looked up, never
+recounted. Exclusions cannot shift a number.
+
+Verified: `/context` output on three existing conversations was
+unchanged by the refactor.
+
+## 2026-10-31 — Turns can be excluded from context
+
+`/exclude n` keeps turn n out of every later request; `/include n` puts
+it back. Both take effect on the next message. This closes the
+2026-10-11 leak: a forgotten fact repeated in an earlier reply no longer
+reaches the model once that turn is excluded.
+
+Whole turns, not single messages. Excluding only a reply would leave two
+user messages in a row, the state `add_turn()` exists to prevent, and
+break the alternation turn labels rely on.
+
+Exclusions live in their own table, keyed by the turn's reply id.
+`messages` stays an append-only record of what was said, and only
+`build_context()` consults the table. Turn numbers, `count_turns()` and
+`get_reply_id()` read the unfiltered history, so excluding a turn never
+renumbers the others. `/extract` reads the filtered history, so an
+excluded turn cannot come back as a memory suggestion.
+
+`/include` deletes the row rather than soft-deleting it. The history of
+what was excluded when is already kept: every snapshot records what
+was actually sent at that turn.
+
+Verified: after forgetting the memory and excluding the two turns that
+mentioned it, the model no longer knew the name; `/context` showed the
+three removed messages and tokens falling from 85 to 59; excluding a
+turn left later numbering unchanged.
+
+Observed: with the memory forgotten but the history intact, the model
+once repeated the name (2026-10-11) and once refused to (this test).
+The leak is real but not reliable to reproduce. A fact the user states
+in the conversation itself is the dependable demonstration.
+
+## 2026-10-31 — A failed model request no longer ends the session
+
+The chat request is wrapped in `except requests.RequestException`,
+which covers a refused connection, a timeout and an HTTP error. KAMI
+prints a short error and returns to the prompt.
+
+`add_turn()` already kept the database clean when a request failed,
+but the uncaught exception still exited the program, losing the
+session. Nothing is saved before a good reply, so after a failure the
+user can simply send the message again.
+
+Verified: with Ollama stopped, sending a message printed the error and
+kept the session; after restarting Ollama, the next message worked.

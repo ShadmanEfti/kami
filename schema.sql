@@ -33,6 +33,31 @@ CREATE TABLE IF NOT EXISTS memory_candidates (
     CHECK ((status='pending')=(decided_at IS NULL))
 );
 
+CREATE TABLE IF NOT EXISTS context_snapshots(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    conversation_id INTEGER NOT NULL REFERENCES conversations(id),
+    reply_message_id INTEGER UNIQUE REFERENCES messages(id),
+    kind TEXT NOT NULL DEFAULT 'chat' CHECK (kind IN ('chat','extract')),
+    system_prompt TEXT,
+    memories TEXT NOT NULL DEFAULT '[]' CHECK(json_valid(memories)),
+    messages TEXT NOT NULL CHECK(json_valid(messages)),
+    payload TEXT NOT NULL CHECK(json_valid(payload)),
+    payload_hash TEXT NOT NULL,
+    model TEXT NOT NULL,
+    prompt_tokens INTEGER,
+    reply_tokens INTEGER,
+    options TEXT NOT NULL CHECK(json_valid(options)),
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    CHECK ((kind='chat')=(reply_message_id IS NOT NULL))
+);
+
+CREATE TABLE IF NOT EXISTS excluded_turns(
+    reply_message_id INTEGER PRIMARY KEY REFERENCES messages(id),
+    excluded_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE INDEX IF NOT EXISTS idx_messages_conversation_id
     ON messages(conversation_id);
 
+CREATE INDEX IF NOT EXISTS idx_context_snapshots_conversation_id
+    ON context_snapshots(conversation_id);
