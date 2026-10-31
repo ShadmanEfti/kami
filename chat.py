@@ -250,18 +250,23 @@ if __name__ == "__main__":
 
         ctx=build_context(conversation_id,pending_user_message=user_input)
         payload_messages=render(ctx)
-
-        response = requests.post(
-            OLLAMA_URL,
-            json={"model": MODEL,
-                  "messages": payload_messages,
-                  "stream": False,
-                  "think": THINK,
-                  "options": OLLAMA_OPTIONS,
-                  },
-                  timeout=120,
-        )
-        response.raise_for_status()
+        
+        try:
+            response = requests.post(
+                        OLLAMA_URL,
+                        json={"model": MODEL,
+                              "messages": payload_messages,
+                              "stream": False,
+                              "think": THINK,
+                              "options": OLLAMA_OPTIONS,
+                              },
+                              timeout=120,
+                    )
+            response.raise_for_status()
+        except requests.RequestException as e:
+            print(f"[error: could not reach the model — {e.__class__.__name__}. Nothing was saved; try again.]\n")
+            continue
+        
         data = response.json()
         reply = data["message"]["content"]
 

@@ -566,3 +566,17 @@ Observed: with the memory forgotten but the history intact, the model
 once repeated the name (2026-10-11) and once refused to (this test).
 The leak is real but not reliable to reproduce. A fact the user states
 in the conversation itself is the dependable demonstration.
+
+## 2026-10-31 — A failed model request no longer ends the session
+
+The chat request is wrapped in `except requests.RequestException`,
+which covers a refused connection, a timeout and an HTTP error. KAMI
+prints a short error and returns to the prompt.
+
+`add_turn()` already kept the database clean when a request failed,
+but the uncaught exception still exited the program, losing the
+session. Nothing is saved before a good reply, so after a failure the
+user can simply send the message again.
+
+Verified: with Ollama stopped, sending a message printed the error and
+kept the session; after restarting Ollama, the next message worked.
