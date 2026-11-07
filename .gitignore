@@ -4,3 +4,4 @@ __pycache__/
 venv/
 kami.db
 .DS_Store
+*.mp4

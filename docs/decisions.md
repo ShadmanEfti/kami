@@ -580,3 +580,17 @@ user can simply send the message again.
 
 Verified: with Ollama stopped, sending a message printed the error and
 kept the session; after restarting Ollama, the next message worked.
+
+## Phase 5 — Visual Interface (Nov 7, 2026)
+
+**Architecture:** React → FastAPI → `service.py` → SQLite / Ollama
+
+- **Shared core.** Turn logic moves from `chat.py` into `service.py`. CLI and API
+  are thin wrappers over it. One implementation, no drift.
+- **Compute vs. display.** Logic returns data; only the CLI formats text. The GUI
+  needs JSON, not printed strings.
+- **API before frontend.** The backend contract is built and tested first, so the
+  UI is built against something stable.
+
+**Deferred to Day 8:** streaming (SSE vs. request/response), frontend framework
+(Next.js vs. Vite). Tag v0.3.0 when the GUI ships, not before.
