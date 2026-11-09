@@ -93,10 +93,7 @@ def format_snapshot(snap,turn,labels):
 
     lines.append(f"-- Messages ({len(snap['messages'])}) --")
     for m in snap["messages"]:
-        if m["role"]=="user":
-            lines.append(f" {labels[m['id']]+':':<15}{_one_line(m['content'])}")
-        else:
-            lines.append(f" {labels[m['id']]+':':<15}{_one_line(m['content'])}")
+        lines.append(f" {labels[m['id']]+':':<15}{_one_line(m['content'])}")
 
     return "\n".join(lines)+"\n"
 
