@@ -585,12 +585,29 @@ kept the session; after restarting Ollama, the next message worked.
 
 **Architecture:** React → FastAPI → `service.py` → SQLite / Ollama
 
-- **Shared core.** Turn logic moves from `chat.py` into `service.py`. CLI and API
+- **Shared core.** Turn logic moved from `chat.py` into `service.py`. CLI and API
   are thin wrappers over it. One implementation, no drift.
 - **Compute vs. display.** Logic returns data; only the CLI formats text. The GUI
   needs JSON, not printed strings.
 - **API before frontend.** The backend contract is built and tested first, so the
   UI is built against something stable.
+- **Typed errors, rendered per interface.** `errors.py` defines `NotFound`,
+  `InvalidRequest`, `ModelUnavailable`, `EmptyReply`. The service raises; the CLI
+  prints, the API maps to status codes.
+- **`llm.py` isolates the model call.** One place to swap providers, one function
+  to mock in tests.
+- **No pass-through wrappers.** Memory commands map 1:1 to `memory.py`; both
+  interfaces call it directly.
+- **Validation lives in the core.** Empty input is rejected in `service.py`, not
+  in each interface.
 
-**Deferred to Day 8:** streaming (SSE vs. request/response), frontend framework
+**Known issues**
+
+- **Extraction recall.** qwen3.5:4b misses facts in messages that also contain a
+  request, and favors the latest message. Pipeline and filtering verified correct;
+  prompt rules didn't help. Tracked in `evals/`; revisit during the model comparison.
+- **Empty conversations.** Starting a chat creates a row even if no message is
+  sent. Fix with lazy creation when the GUI's "New chat" is built.
+
+**Deferred to next Day:** streaming (SSE vs. request/response), frontend framework
 (Next.js vs. Vite). Tag v0.3.0 when the GUI ships, not before.
