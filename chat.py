@@ -182,7 +182,7 @@ def handle_command(user_input,conversation_id):
             print(f"Excluded [{turn}] from context, starting with your next message.\n" if changed
                   else f"[{turn}] is already excluded.\n")
         else:
-            print(f"Included [{turn}] from context, starting with your next message.\n" if changed
+            print(f"Included [{turn}] in context again, starting with your next message.\n" if changed
                   else f"[{turn}] is not excluded.\n")
         
     elif command=="/help":
