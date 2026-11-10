@@ -1,6 +1,30 @@
 {
   "cases": [
     {
+      "id": "facts",
+      "user_messages": [
+        "Hi, I'm Acam, I study data science at UIU",
+        "I'm building a memory layer for LLMs called KAMI",
+        "I prefer answers with code examples"
+      ],
+      "expected": [
+        {"fact": "name", "any_of": ["acam"]},
+        {"fact": "studies data science at UIU", "any_of": ["uiu", "data science"]},
+        {"fact": "building KAMI", "any_of": ["kami"]},
+        {"fact": "prefers code examples", "any_of": ["code"]}
+      ]
+    },
+    {
+      "id": "no_facts",
+      "user_messages": ["what's 2+2?", "thanks!"],
+      "expected": []
+    },
+    {
+      "id": "transient",
+      "user_messages": ["I'm so tired today", "can you help me fix this error?"],
+      "expected": []
+    },
+    {
       "id": "mixed-fact-request",
       "note": "Facts mixed with 'reply in short' requests; from conversation #36",
       "user_messages": [
